@@ -446,18 +446,13 @@ __global__ void kernIdentifyCellStartEnd(int N, int *particleGridIndices,
   {
     int gridCell = particleGridIndices[boid];
 
-    int prevThang = boid >= 1 ? particleGridIndices[boid - 1] : gridCell;
-    int nextThang = boid + 1 < N ? particleGridIndices[boid + 1] : gridCell;
-
-    if (boid >= 1 && gridCell != prevThang)
+    if (boid >= 1 && gridCell != particleGridIndices[boid - 1])
     {
-      // There is only one case of this among all threads, so I don't think there are any race conditions + weird read/write accesses
       gridCellStartIndices[gridCell] = boid;
     }
 
-    if (boid + 1 < N && gridCell != nextThang)
+    if (boid + 1 < N && gridCell != particleGridIndices[boid + 1])
     {
-      // This, similarly, only happens once since the array is sorted
       gridCellEndIndices[gridCell] = boid;
     }
   }
@@ -503,7 +498,6 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   glm::vec3 rule3PerceivedVelocity = glm::vec3(0.0f);
   int rule3Neighbors = 0;
 
-  // This is god awful code. Don't check this in, refactor it before you submit please. Thanks.
   // This block of code is used to figure out the bounds of the cells we visit. There are definitely better
   // and cleaner ways of doing this, but for the sake of moving forward in the assignment, I'll do this for now.
   glm::vec3 boidPosition = pos[boidIndex];
@@ -533,20 +527,18 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   for (int dx = minX; dx <= maxX; dx++) {
     for (int dy = minY; dy <= maxY; dy++) {
       for (int dz = minZ; dz <= maxZ; dz++) {
-
         glm::vec3 posDelta = glm::vec3(dx, dy, dz) * neighborhoodDistance;
         glm::vec3 boidOffsetPosition = boidPosition + posDelta;
 
         int accessedGridCell = positionToGridCell(gridResolution, boidOffsetPosition, gridMin, inverseCellWidth);
 
-        int testStart = gridCellStartIndices[accessedGridCell];
-        int testEnd = gridCellEndIndices[accessedGridCell];
+        int startIndex = gridCellStartIndices[accessedGridCell];
+        int endIndex = gridCellEndIndices[accessedGridCell];
 
-        // Iterate through boids in cell
-        for (int startIndex = testStart; startIndex > 0 && startIndex <= testEnd; startIndex++) {
-          int neighborIndex = particleArrayIndices[startIndex];
+        // Iterate through neighbor boids in cell
+        for (int neighborBoid = startIndex; neighborBoid > 0 && neighborBoid <= endIndex; neighborBoid++) {
+          int neighborIndex = particleArrayIndices[neighborBoid];
 
-          // Skip self
           if (neighborIndex == boidIndex)
           {
             continue;
