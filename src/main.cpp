@@ -27,7 +27,7 @@
 #define COHERENT_GRID 1
 
 // LOOK-1.2 - change this to adjust particle count in the simulation
-const int N_FOR_VIS = 50000;
+const int N_FOR_VIS = 100000;
 const float DT = 0.2f;
 
 /**
@@ -228,7 +228,7 @@ void initShaders(GLuint * program) {
 
     Boids::unitTest(); // LOOK-1.2 We run some basic example code to make sure
                        // your CUDA development setup is ready to go.
-    glfwSwapInterval(0);
+    // glfwSwapInterval(0);
 
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();

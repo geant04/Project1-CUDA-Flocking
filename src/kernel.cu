@@ -98,9 +98,6 @@ int *dev_gridCellEndIndices;   // to this cell?
 glm::vec3 *dev_pos_sorted;
 glm::vec3 *dev_vel_sorted;
 
-thrust::device_ptr<glm::vec3> dev_thrust_pos_sorted;
-thrust::device_ptr<glm::vec3> dev_thrust_vel_sorted;
-
 // LOOK-2.1 - Grid parameters based on simulation parameters.
 // These are automatically computed for you in Boids::initSimulation
 int gridCellCount;
@@ -197,14 +194,14 @@ void Boids::initSimulation(int N) {
   checkCUDAErrorWithLine("cudaMalloc dev_gridCellEndIndices failed!");
 
   cudaMalloc((void**)&dev_pos_sorted, N * sizeof(glm::vec3));
+  checkCUDAErrorWithLine("cudaMalloc dev_pos_sorted failed!");
+
   cudaMalloc((void**)&dev_vel_sorted, N * sizeof(glm::vec3));
+  checkCUDAErrorWithLine("cudaMalloc dev_vel_sorted failed!");
 
   // Thrust setup
   dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
   dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
-
-  //dev_thrust_pos_sorted = thrust::device_ptr<glm::vec3>(dev_pos_sorted);
-  //dev_thrust_vel_sorted = thrust::device_ptr<glm::vec3>(dev_vel_sorted);
 
   cudaDeviceSynchronize();
 }
@@ -766,18 +763,6 @@ void Boids::stepSimulationScatteredGrid(float dt) {
   // Sort on GPU
   thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + numObjects, dev_thrust_particleArrayIndices);
 
-  /*int* testValues = new int[numObjects];
-  int* testValues2 = new int[numObjects];
-
-  cudaMemcpy(testValues, dev_particleGridIndices, numObjects * sizeof(int), cudaMemcpyDeviceToHost);
-  cudaMemcpy(testValues2, dev_particleArrayIndices, numObjects * sizeof(int), cudaMemcpyDeviceToHost);
-
-
-  for (int i = 0; i < 50; i++)
-  {
-    std::cout << "grid cell: " << testValues[i] << " boid #: " << testValues2[i] << std::endl;
-  }*/
-
   // Reset start/end pointers, this is needed so that we know certain cells have no boids
   size_t cellResetBlocks = (gridCellCount + blockSize - 1) / blockSize;
   kernResetIntBuffer<<<cellResetBlocks, blockSize>>>(gridCellCount, dev_gridCellStartIndices, -1);
@@ -838,22 +823,17 @@ void Boids::stepSimulationCoherentGrid(float dt) {
   kernIdentifyCellStartEnd<<<blocks, blockSize>>>(numObjects, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
 
   // Start and end indices of each grid should now be successfully stored. We can now perform velocity updates, ideally
+  // I pass in unsorted pointers because ideally I should just update those buffers directly... not sure if this is allowed
   kernUpdateVelNeighborSearchCoherent<<<blocks, blockSize>>>(
       numObjects, gridSideCount, gridMinimum, gridInverseCellWidth, 
       gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, 
       dev_pos_sorted, dev_vel_sorted, dev_vel2, dev_pos, dev_vel1);
-  
-  /*kernUpdateVelNeighborSearchScattered<<<blocks, blockSize>>>(
-    numObjects, gridSideCount, gridMinimum, gridInverseCellWidth, 
-    gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, 
-    dev_particleArrayIndices, dev_pos, dev_vel1, dev_vel2);*/
 
   // Update pos
   kernUpdatePos<<<blocks, blockSize>>>(numObjects, dt, dev_pos, dev_vel2);
 
   // Ping-pong velocity buffers - we need to swap vel1's information with vel2's velocity
-  // cudaMemcpy(dev_vel1, dev_vel2, sizeof(glm::vec3) * numObjects, cudaMemcpyDeviceToDevice);
-  std::swap(dev_vel1, dev_vel2);
+  cudaMemcpy(dev_vel1, dev_vel2, sizeof(glm::vec3) * numObjects, cudaMemcpyDeviceToDevice);
 }
 
 void Boids::endSimulation() {
@@ -866,6 +846,9 @@ void Boids::endSimulation() {
   cudaFree(dev_particleArrayIndices);
   cudaFree(dev_gridCellStartIndices);
   cudaFree(dev_gridCellEndIndices);
+
+  cudaFree(dev_pos_sorted);
+  cudaFree(dev_vel_sorted);
 }
 
 void Boids::unitTest() {
