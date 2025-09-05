@@ -97,6 +97,7 @@ int *dev_gridCellEndIndices;   // to this cell?
 // the position and velocity data to be coherent within cells.
 glm::vec3 *dev_pos_sorted;
 glm::vec3 *dev_vel_sorted;
+glm::vec3 *dev_vel_out;
 
 // LOOK-2.1 - Grid parameters based on simulation parameters.
 // These are automatically computed for you in Boids::initSimulation
@@ -198,6 +199,9 @@ void Boids::initSimulation(int N) {
 
   cudaMalloc((void**)&dev_vel_sorted, N * sizeof(glm::vec3));
   checkCUDAErrorWithLine("cudaMalloc dev_vel_sorted failed!");
+
+  cudaMalloc((void**)&dev_vel_out, N * sizeof(glm::vec3));
+  checkCUDAErrorWithLine("cudaMalloc dev_vel_out failed!");
 
   // Thrust setup
   dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
@@ -595,7 +599,7 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   int N, int gridResolution, glm::vec3 gridMin,
   float inverseCellWidth, float cellWidth,
   int *gridCellStartIndices, int *gridCellEndIndices,
-  glm::vec3 *pos_sorted, glm::vec3 *vel_sorted, glm::vec3 *vel_out, glm::vec3 *pos_unsorted, glm::vec3 *vel_unsorted) {
+  glm::vec3 *pos_sorted, glm::vec3 *vel_sorted, glm::vec3 *vel_out) {
   // TODO-2.3 - This should be very similar to kernUpdateVelNeighborSearchScattered,
   // except with one less level of indirection.
   // This should expect gridCellStartIndices and gridCellEndIndices to refer
@@ -626,7 +630,7 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   int rule3Neighbors = 0;
 
   // Calculate min/max neighbor cell bounds
-  glm::vec3 boidPosition = pos_unsorted[boidIndex];
+  glm::vec3 boidPosition = pos_sorted[boidIndex];
   float neighborhoodDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
 
   glm::ivec3 boidLocalCellPosition = (boidPosition - gridMin) / cellWidth;
@@ -696,7 +700,7 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   }
 
   glm::vec3 netVelocityChange = rule1Velocity + rule2Velocity + rule3PerceivedVelocity;
-  glm::vec3 finalVelocity = vel_unsorted[boidIndex] + netVelocityChange;
+  glm::vec3 finalVelocity = vel_sorted[boidIndex] + netVelocityChange;
 
   // Speed clamp
   if (length(finalVelocity) > maxSpeed)
@@ -719,6 +723,18 @@ __global__ void kernPopulateSortedPosVel(int N, glm::vec3 *pos_sorted, glm::vec3
   int sortedBoidIndex = sorted_particleArrayIndices[gridCellIndex];
   pos_sorted[gridCellIndex] = pos[sortedBoidIndex];
   vel_sorted[gridCellIndex] = vel[sortedBoidIndex];
+}
+
+__global__ void kernRestoreFinalVelocty(int N, glm::vec3 *vel_out_sorted, glm::vec3 *vel2, int *sorted_particleArrayIndices)
+{
+  int gridCellIndex = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (gridCellIndex >= N) {
+    return;
+  }
+
+  int sortedBoidIndex = sorted_particleArrayIndices[gridCellIndex];
+  vel2[sortedBoidIndex] = vel_out_sorted[gridCellIndex];
 }
 
 /**
@@ -823,11 +839,12 @@ void Boids::stepSimulationCoherentGrid(float dt) {
   kernIdentifyCellStartEnd<<<blocks, blockSize>>>(numObjects, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
 
   // Start and end indices of each grid should now be successfully stored. We can now perform velocity updates, ideally
-  // I pass in unsorted pointers because ideally I should just update those buffers directly... not sure if this is allowed
   kernUpdateVelNeighborSearchCoherent<<<blocks, blockSize>>>(
       numObjects, gridSideCount, gridMinimum, gridInverseCellWidth, 
       gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, 
-      dev_pos_sorted, dev_vel_sorted, dev_vel2, dev_pos, dev_vel1);
+      dev_pos_sorted, dev_vel_sorted, dev_vel_out);
+  
+  kernRestoreFinalVelocty<<<blocks, blockSize>>>(numObjects, dev_vel_out, dev_vel2, dev_particleArrayIndices);
 
   // Update pos
   kernUpdatePos<<<blocks, blockSize>>>(numObjects, dt, dev_pos, dev_vel2);
@@ -849,6 +866,7 @@ void Boids::endSimulation() {
 
   cudaFree(dev_pos_sorted);
   cudaFree(dev_vel_sorted);
+  cudaFree(dev_vel_out);
 }
 
 void Boids::unitTest() {
