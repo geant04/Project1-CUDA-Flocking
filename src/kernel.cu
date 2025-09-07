@@ -136,7 +136,7 @@ __host__ __device__ glm::vec3 generateRandomVec3(float time, int index) {
 * LOOK-1.2 - This is a basic CUDA kernel.
 * CUDA kernel for generating boids with a specified mass randomly around the star.
 */
-__global__ void kernGenerateRandomPosArray(int time, int N, glm::vec3 * arr, float scale) {
+__global__ void kernGenerateRandomPosArray(int time, int N, glm::vec3 *arr, float scale) {
   int index = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (index < N) {
     glm::vec3 rand = generateRandomVec3(time, index);
