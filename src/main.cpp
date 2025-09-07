@@ -26,7 +26,7 @@
 #define UNIFORM_GRID 1
 #define COHERENT_GRID 1
 
-#define IS_PROFILING 0
+#define IS_PROFILING 1
 #define USE_NSIGHT_COMPUTE 0
 #define USE_27_CHECK 1
 
