@@ -62,7 +62,7 @@ void checkCUDAError(const char *msg, int line = -1) {
 #define maxSpeed 1.0f
 
 /*! Size of the starting area in simulation space. */
-#define scene_scale 100.0f
+#define scene_scale 200.0f
 
 /***********************************************
 * Kernel state (pointers are device pointers) *
@@ -170,7 +170,15 @@ void Boids::initSimulation(int N) {
   checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
   // LOOK-2.1 computing grid params
-  gridCellWidth = 2.0f * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
+
+  // 27 cell check experiment
+  float gridCellWidthScale = 2.0f;
+
+#if USE_27_CHECK
+  gridCellWidthScale = 1.0f;
+#endif
+
+  gridCellWidth = gridCellWidthScale * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
   int halfSideCount = (int)(scene_scale / gridCellWidth) + 1;
   gridSideCount = 2 * halfSideCount;
 
@@ -514,9 +522,16 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   glm::vec3 boidPosition = pos[boidIndex];
   float neighborhoodDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
 
-  glm::ivec3 boidLocalCellPosition = (boidPosition - gridMin) / cellWidth;
-  glm::ivec3 minXYZ = (boidPosition - neighborhoodDistance - gridMin) / cellWidth;
-  glm::ivec3 maxXYZ = (boidPosition + neighborhoodDistance - gridMin) / cellWidth;
+  glm::ivec3 minXYZ, maxXYZ;
+
+#if USE_27_CHECK
+  minXYZ = glm::ivec3(-1);
+  maxXYZ = glm::ivec3(1);
+#else
+  minXYZ = (boidPosition - neighborhoodDistance - gridMin) / cellWidth;
+  maxXYZ = (boidPosition + neighborhoodDistance - gridMin) / cellWidth;
+#endif
+
 
   // Mathematically, we only access up to 8 cells
   for (int dz = minXYZ.z; dz <= maxXYZ.z; dz++) {
@@ -633,7 +648,8 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   glm::vec3 boidPosition = pos_sorted[boidIndex];
   float neighborhoodDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
 
-  glm::ivec3 boidLocalCellPosition = (boidPosition - gridMin) / cellWidth;
+
+
   glm::ivec3 minXYZ = (boidPosition - neighborhoodDistance - gridMin) / cellWidth;
   glm::ivec3 maxXYZ = (boidPosition + neighborhoodDistance - gridMin) / cellWidth;
 
