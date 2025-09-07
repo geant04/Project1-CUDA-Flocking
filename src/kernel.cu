@@ -49,6 +49,9 @@ void checkCUDAError(const char *msg, int line = -1) {
 /*! Block size used for CUDA kernel launch. */
 #define blockSize 128
 
+// Based on 27 cells * 2 for start/end, + padding so it's a multiple of 32
+#define sharedGridIndicesSize 64
+
 // LOOK-1.2 Parameters for the boids algorithm.
 // These worked well in our reference implementation.
 #define rule1Distance 5.0f
@@ -62,7 +65,7 @@ void checkCUDAError(const char *msg, int line = -1) {
 #define maxSpeed 1.0f
 
 /*! Size of the starting area in simulation space. */
-#define scene_scale 200.0f
+#define scene_scale 100.0f
 
 /***********************************************
 * Kernel state (pointers are device pointers) *
@@ -648,8 +651,6 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   glm::vec3 boidPosition = pos_sorted[boidIndex];
   float neighborhoodDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
 
-
-
   glm::ivec3 minXYZ = (boidPosition - neighborhoodDistance - gridMin) / cellWidth;
   glm::ivec3 maxXYZ = (boidPosition + neighborhoodDistance - gridMin) / cellWidth;
 
@@ -867,6 +868,113 @@ void Boids::stepSimulationCoherentGrid(float dt) {
 
   // Ping-pong velocity buffers - we need to swap vel1's information with vel2's velocity
   cudaMemcpy(dev_vel1, dev_vel2, sizeof(glm::vec3) * numObjects, cudaMemcpyDeviceToDevice);
+}
+
+__global__ void kernUpdateVelNeighborSearchCoherentSharedMem(int N, int *gridIndices_sorted, glm::vec3 *pos_sorted,
+    int *gridCellStartIndices, int *gridCellEndIndices)
+{
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (index >= N) {
+    return;
+  }
+  
+  // Populate, for the grid cell the thread is in, its start/end indices in shared memory
+  // to avoid global mem lookups later. Idea is that by running our threads on the sorted
+  // pos array, other nearby threads may need to access the same cells and therefore start/end indices.
+  __shared__ int cellStartEndIndices[sharedGridIndicesSize];
+
+  int minGridCell = gridIndices_sorted[blockIdx.x * blockDim.x];
+  int currentSortedGridCell = gridIndices_sorted[index];
+  int currentCellStartIndex = gridCellStartIndices[currentSortedGridCell];
+  int currentCellEndIndex = gridCellEndIndices[currentSortedGridCell];
+
+  // This guarantees we populate for the first thread index in a cell
+  if (index == 0 || gridIndices_sorted[index] != gridIndices_sorted[index - 1])
+  {
+    int sharedStartEndIndex = 2 * (currentSortedGridCell - minGridCell);
+    cellStartEndIndices[sharedStartEndIndex] = currentCellStartIndex;
+    cellStartEndIndices[sharedStartEndIndex + 1] = currentCellEndIndex;
+  }
+
+  __syncthreads();
+
+  // Now we do the rest of the fun stuff.
+  
+  // Calculate min/max neighbor cell bounds
+  glm::vec3 boidPosition = pos_sorted[boidIndex];
+  float neighborhoodDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
+
+  glm::ivec3 minXYZ = (boidPosition - neighborhoodDistance - gridMin) / cellWidth;
+  glm::ivec3 maxXYZ = (boidPosition + neighborhoodDistance - gridMin) / cellWidth;
+
+  // Mathematically, we only access up to 8 cells
+  for (int dz = minXYZ.z; dz <= maxXYZ.z; dz++) {
+    for (int dy = minXYZ.y; dy <= maxXYZ.y; dy++) {
+      for (int dx = minXYZ.x; dx <= maxXYZ.x; dx++) {
+        // Access neighboring grid by min/max cells to check
+        int accessedGridCell = gridIndex3Dto1D(dx, dy, dz, gridResolution);
+        int startIndex = gridCellStartIndices[accessedGridCell];
+        int endIndex = gridCellEndIndices[accessedGridCell];
+
+        // Empty cell, skip
+        if (startIndex == -1)
+        {
+          continue;
+        }
+
+        // Iterate through neighbor boids in cell
+        for (int neighborBoid = startIndex; neighborBoid <= endIndex; neighborBoid++) {
+          if (neighborBoid == boidIndex)
+          {
+            continue;
+          }
+
+          glm::vec3 neighborPosition = pos_sorted[neighborBoid];
+          glm::vec3 currentVelocityChange = glm::vec3(0.0f);
+
+          float distanceToNeighbor = distance(boidPosition, neighborPosition);
+
+          if (distanceToNeighbor < rule1Distance)
+          {
+            rule1CenterOfMass += neighborPosition;
+            rule1Neighbors++;
+          }
+
+          if (distanceToNeighbor < rule2Distance)
+          {
+            rule2Velocity -= (neighborPosition - boidPosition);
+          }
+
+          if (distanceToNeighbor < rule3Distance)
+          {
+            rule3PerceivedVelocity += vel_sorted[neighborBoid];
+            rule3Neighbors++;
+          }
+        }
+      }
+    }
+  }
+}
+
+void Boids::stepSimulationSharedMemoryGrid(float dt)
+{
+  // From coherent solution, our pos index is auto sorted based on the min grid cell that exists. If we work under some
+  // magical assumption that for thread N, thread N+1 will check N and N+2, and they're contained in the same warp,
+  // we can have some time off by storing start/end indices of their cell and similarly other cells they'll access into
+  // shared mem.
+
+  // Block size = 128
+  
+  // compute indices
+  // 
+  // sort key/value grid cells and boid indices
+  // 
+  // reset buffers
+  // 
+  // populate awesome start/end indices
+  // 
+  // run the stupid neighboring search with shared memory
 }
 
 void Boids::endSimulation() {
