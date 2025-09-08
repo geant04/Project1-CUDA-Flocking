@@ -13,11 +13,11 @@ GeForce RTX 4070 Laptop GPU 8GB
 | :--:  |
 | *Naive implementation with 10,000 boids* |
 
-| ![Uniform implementation 100k](images/uniform100ktemp.gif) |
+| ![Uniform implementation 100k](images/uniformTest.gif) |
 | :--:  |
 | *Uniform implementation with 100,000 boids* |
 
-| ![Coherent implementation 100k](images/coherent100ktemp.gif) |
+| ![Coherent implementation 100k](images/coherentTest.gif) |
 | :--:  |
 | *Coherent implementation with 100,000 boids* |
 
