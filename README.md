@@ -9,9 +9,17 @@ GeForce RTX 4070 Laptop GPU 8GB
 
 ## Project 1: CUDA-based Boids Simulation
 
-![boids gif](images/coherentBoidsMany.gif)
-<br>
-*Coherent boids method, simulating 100k boids*
+| ![Naive implemenation 10k](images/naive10K.gif) |
+| :--:  |
+| *Naive implementation with 10,000 boids* |
+
+| ![Uniform implementation 100k](images/uniform100ktemp.gif) |
+| :--:  |
+| *Uniform implementation with 100,000 boids* |
+
+| ![Coherent implementation 100k](images/coherent100ktemp.gif) |
+| :--:  |
+| *Coherent implementation with 100,000 boids* |
 
 For this assignment, I implemented a flocking simulation based on the Reynolds Boids algorithm. We call the objects in simulaiton boids, whose positions and velocities are determined by three rules representing behaviors for cohesion, separation, and alignment.
 
