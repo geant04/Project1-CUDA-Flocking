@@ -24,14 +24,14 @@
 // LOOK-2.1 LOOK-2.3 - toggles for UNIFORM_GRID and COHERENT_GRID
 #define VISUALIZE 1
 #define UNIFORM_GRID 1
-#define COHERENT_GRID 0
+#define COHERENT_GRID 1
 
-#define IS_PROFILING 0
+#define IS_PROFILING 1
 #define USE_NSIGHT_COMPUTE 0
-#define USE_27_CHECK 0
+#define USE_27_CHECK 1
 
 // LOOK-1.2 - change this to adjust particle count in the simulation
-const int N_FOR_VIS = 100000;
+const int N_FOR_VIS = 5000;
 const float DT = 0.2f;
 
 /**

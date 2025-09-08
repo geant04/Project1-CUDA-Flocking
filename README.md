@@ -129,6 +129,7 @@ It's likely the case that by reducing the cell width, we're more likely to skip 
 
 Therefore, we are more likely to process more out of range boids with 2x width cells than the 27 cells configuration with a normal width. By having less boids to process in the 27 cell check, we're potentially boosting performance as each thread can skip more cells and do less work overall.
 
+For 5000 boids, I saw lower performance on uniform(476 fps on uniform vs 650.3 without 27 cell check), but higher performance for coherence (673 fps) and for naive (369.4). There seems to be some variation, potentially due to thread stalls in having more empty space per cell.
 
 
 
