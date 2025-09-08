@@ -2,7 +2,7 @@
 Project 1 - Flocking**
 
 * Anthony Ge
-  * [LinkedIn](https://www.linkedin.com/in/anthonyge/), [personal website](geant.pro)
+  * [LinkedIn](https://www.linkedin.com/in/anthonyge/), [personal website](https://www.geant.pro)
 * Tested on: Windows 11, i9-13900H @ 2600 Mhz 16GB, NVIDIA 
 GeForce RTX 4070 Laptop GPU 8GB
 * **For extra credit, I implemented grid-looping optimization.**
